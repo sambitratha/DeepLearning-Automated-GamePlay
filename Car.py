@@ -56,22 +56,24 @@ def maingame():
     #execute this when user starts playing
     ballx = windowlength/4
     bally = (windowheight - upmargin) / 2
-    radius = 5
-    width = 50
-    gap = 20
+    radius = 15
+    width =80
+    gap = 80
     screenheight = windowheight - upmargin
     distance = windowlength/2
     pipes = []
     #add two pipes in the start of the game
-    pipes.append([windowlength/2,random.randint(10, screenheight - 10)])
-    pipes.append([windowlength, random.randint(10, screenheight - 10)])
+    pipes.append([windowlength/2,random.randint(50, screenheight - 50)])
+    pipes.append([windowlength, random.randint(50, screenheight - 50)])
 
-    velx = -4
+    vely = 10
+    velx = -10
     clock = pygame.time.Clock()
     display = pygame.display.set_mode((windowlength, windowheight))
     pygame.display.set_caption("Car Racing")
+    up = False
     while True:
-        display.fill(colors['white'])
+        display.fill(colors['blue'])
 
         pygame.draw.circle(display, colors['red'], (ballx, bally), radius)
 
@@ -87,7 +89,7 @@ def maingame():
             pipe[0] += velx
 
         if pipes[-1][0] + distance < windowlength:
-            pipes.append([pipes[-1][0] + distance, random.randint(10, screenheight -10)])
+            pipes.append([pipes[-1][0] + distance, random.randint(50, screenheight -50)])
 
         if pipes[0][0] + pipes[0][1] < 0:
             pipes.pop(0)
@@ -99,7 +101,19 @@ def maingame():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 return
-            
+
+            if event.type == KEYDOWN and event.key == K_UP:
+                up = True
+
+        if up:
+            vely = -10
+            up = False
+
+        if vely < 10:
+            vely += 1
+
+        bally += vely
+
 
         pygame.display.update()
 
