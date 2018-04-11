@@ -1,0 +1,4 @@
+1)  collision    --done
+2)  score maintain
+3)  2 holes
+4)
