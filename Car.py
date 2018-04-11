@@ -49,6 +49,11 @@ def showWelcomeScreen():
         cropRect = (0, 0, windowlength, windowheight)
         display.blit(welcomebg, dest = (0, 0), area= cropRect)
         #display.blit(welcomebg, welcomebg.get_rect())
+
+        tObject, tRect = getStringObject("Press 'P' to Play", windowlength/2 , 430)
+        display.blit(tObject, tRect)
+        display.set_alpha(255)
+
         pygame.display.update()
 
         for event in pygame.event.get():
@@ -112,7 +117,7 @@ def maingame():
             lpipe['height'] = screenheight - pipe[1] - gap
 
             if checkForCollision(ball, upipe) or checkForCollision(ball, lpipe):
-               return
+               return playerscore
 
         pygame.draw.circle(display, colors['red'], (ballx, bally), radius)
 
@@ -153,7 +158,7 @@ def maingame():
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
-                return
+                return playerscore
 
             #if player moved up then set the boolean field to true
             if event.type == KEYDOWN and event.key == K_UP:
@@ -172,6 +177,9 @@ def maingame():
 
 
 
+        if bally + radius >= windowheight:
+            vely = int(float(-0.8 * vely))
+
 
         pygame.draw.rect(display, (50, 50, 70, 100), (0, 0, windowlength, upmargin))
 
@@ -182,7 +190,7 @@ def maingame():
 
     pass
 
-def showGameover():
+def showGameover(score):
     #show this screen when the user is done playing the game
 
     display = pygame.display.set_mode((windowlength, windowheight))
@@ -194,8 +202,8 @@ def showGameover():
         cropRect = (0, 0, windowlength, windowheight)
         display.blit(gameoverBG, dest = (0, 0), area= cropRect)
 
-        #tObject, tRect = getStringObject(str(playerscore), windowlength/2, 10)
-        #display.blit(tObject, tRect)
+        tObject, tRect = getStringObject("Your Score: " + str(score), windowlength/2, 50 , colors['black'])
+        display.blit(tObject, tRect)
         #display.blit(welcomebg, welcomebg.get_rect())
         pygame.display.update()
 
@@ -222,9 +230,10 @@ def checkForCollision(circle, rect):
     return False
 
 
-def getStringObject(s,centerx,centery):
-    color = colors['white']
-    textObj = font.render(s,True, color , (50, 50, 70))
+def getStringObject(s,centerx,centery, color = colors['white']):
+
+    textObj = font.render(s,True, color )
+    #textObj.set_alpha(50)
     textRect = textObj.get_rect()
     textRect.center = (centerx, centery)
     return textObj , textRect
@@ -233,10 +242,10 @@ def getStringObject(s,centerx,centery):
 
 if __name__ == '__main__':
     pygame.init()
-    font = pygame.font.Font("assets/EraserRegular.ttf",24)
+    font = pygame.font.Font("assets/EraserRegular.ttf",30)
     for i in range(5):
         showWelcomeScreen()
-        maingame()
-        showGameover()
+        score = maingame()
+        showGameover(score)
 
 
