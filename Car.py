@@ -5,6 +5,8 @@ import random
 from pygame.locals import *
 from  math import  cos, sin, pi
 import pygame.locals as locals
+import model
+import time
 
 
 
@@ -38,6 +40,8 @@ font = None
 welcomebg = pygame.image.load('assets/welcome2.jpg')
 print(welcomebg)
 
+Qmodel = model.QLearning([30, 40, 60], episilion=-1)
+
 #########################################################################################
 def showWelcomeScreen():
     #show this screen when the user first starts the program
@@ -68,6 +72,9 @@ def showWelcomeScreen():
 
 def maingame():
     #execute this when user starts playing
+
+
+
     playerscore = 0
     pipeimage = pygame.image.load("assets/brick4.png")
     ballx = windowlength/4
@@ -79,8 +86,10 @@ def maingame():
     distance = windowlength/2
     pipes = []
     #add two pipes in the start of the game
-    pipes.append([windowlength/2,random.randint(50, screenheight - 50)])
-    pipes.append([windowlength, random.randint(50, screenheight - 50)])
+    height1 = random.randint(200, 300)
+    height2 = random.randint(200, 300)
+    pipes.append([windowlength/2, height1])
+    pipes.append([windowlength, height2])
 
 
     crossedPole = False
@@ -96,28 +105,55 @@ def maingame():
     up = False
     flag = False
 
+    lastaction = None
+    prevstate = None
+    curstate = None
+    reward = None
+
+    gameover = False
+
+    pixel_batch = 20
 
     while True:
         display.fill(colors['blue'])
-        curpipe = pipes[0]
-        if not crossedPole:
-            if ballx > curpipe[0] + width/2 :
-                playerscore += 1
-                crossedPole = True
 
-        ball = {'center' : (ballx, bally) , 'radius' : radius}
-        for pipe in pipes:
-            upipe = {}
-            upipe['start'] = [pipe[0], upmargin]
-            upipe['width'] = width
-            upipe['height'] = pipe[1]
-            lpipe = {}
-            lpipe['start'] = [pipe[0], upmargin + pipe[1] + gap]
-            lpipe['width'] = width
-            lpipe['height'] = screenheight - pipe[1] - gap
+        curvel = vely
+        horizontal_distance = 0
+        vertical_distance = 0
+        if ballx > pipes[0][0] + width/2:
+            horizontal_distance = (pipes[1][0] - ballx)
+            vertical_distance = pipes[1][1] - bally
+        else:
+            horizontal_distance = pipes[0][0] + width/2 - ballx
+            vertical_distance = pipes[0][1] - bally
 
-            if checkForCollision(ball, upipe) or checkForCollision(ball, lpipe):
-               return playerscore
+        horizontal_distance /= pixel_batch
+        vertical_distance  /= pixel_batch
+
+        horizontal_distance = max(horizontal_distance, 0)
+
+
+        curstate = (curvel, horizontal_distance, vertical_distance)
+
+
+        if lastaction != None:
+            Qmodel.updateQValue(prevstate, curstate, reward)
+            Qmodel.update_epsilion()
+
+
+
+        if gameover:
+            Qmodel.writeQTable()
+            return playerscore
+
+        lastaction = Qmodel.getAction(curstate)
+
+        if lastaction == 1:
+            up = True
+            vely = playerUpAccl
+
+
+
 
         pygame.draw.circle(display, colors['red'], (ballx, bally), radius)
 
@@ -141,17 +177,16 @@ def maingame():
 
         #add new pipe to list
         if pipes[-1][0] + distance < windowlength:
-            pipes.append([pipes[-1][0] + distance, random.randint(50, screenheight - 150)])
+            #pipes.append([pipes[-1][0] + distance, random.randint(50, screenheight - 200)])
+            newheight = random.randint(200, 300)
+            #print "newheight : ", newheight
+            pipes.append([pipes[-1][0] + distance, newheight])
+            #print pipes
 
 
-        #pop first pipe if needed
-        if pipes[0][0] + pipes[0][1] < 0:
-            if  crossedPole:
-                crossedPole = False
-            pipes.pop(0)
 
 
-        clock.tick(30)
+        clock.tick(150)
 
 
         #event call back method
@@ -161,9 +196,9 @@ def maingame():
                 return playerscore
 
             #if player moved up then set the boolean field to true
-            if event.type == KEYDOWN and event.key == K_UP:
-                up = True
-                vely = playerUpAccl
+            # if event.type == KEYDOWN and event.key == K_UP:
+            #     up = True
+            #     vely = playerUpAccl
 
 
         if vely < playerMaxVel and not up:
@@ -173,7 +208,19 @@ def maingame():
             up = False
 
         #update the position of ball
-        bally += vely
+        # if bally + radius < windowheight :
+        #     bally += vely
+
+        if radius + upmargin < bally < windowheight - radius:
+        	bally += vely
+
+        elif radius + upmargin > bally:
+        	if vely > 0:
+        		bally += vely
+
+        elif bally > windowheight - radius:
+        	if vely < 0:
+        		bally += vely
 
 
 
@@ -181,10 +228,55 @@ def maingame():
             vely = int(float(-0.8 * vely))
 
 
+        curpipe = pipes[0]
+        if not crossedPole:
+            if ballx > curpipe[0] + width/2 :
+                reward = 2
+                playerscore += 1
+                crossedPole = True
+
+        #pop first pipe if needed
+        if pipes[0][0] + pipes[0][1] < 0:
+            if  crossedPole:
+                crossedPole = False
+            pipes.pop(0)
+
+
+        ball = {'center' : (ballx, bally) , 'radius' : radius}
+        for pipe in pipes:
+            upipe = {}
+            upipe['start'] = [pipe[0], upmargin]
+            upipe['width'] = width
+            upipe['height'] = pipe[1]
+            lpipe = {}
+            lpipe['start'] = [pipe[0], upmargin + pipe[1] + gap]
+            lpipe['width'] = width
+            lpipe['height'] = screenheight - pipe[1] - gap
+
+            if checkForCollision(ball, upipe) or checkForCollision(ball, lpipe):
+               gameover = True
+
+
+        if gameover:
+            reward = -100000000
+        else:
+            if not crossedPole:
+                reward = 1
+
+
+
+
         pygame.draw.rect(display, (50, 50, 70, 100), (0, 0, windowlength, upmargin))
 
         tObject, tRect = getStringObject(str(playerscore), windowlength/2, 10)
         display.blit(tObject, tRect)
+
+
+        (a, b, c) = curstate
+        prevstate = (a, b, c, lastaction)
+
+
+
         if not flag:
             pygame.display.update()
 
@@ -243,9 +335,18 @@ def getStringObject(s,centerx,centery, color = colors['white']):
 if __name__ == '__main__':
     pygame.init()
     font = pygame.font.Font("assets/EraserRegular.ttf",30)
-    for i in range(5):
-        showWelcomeScreen()
+    start = time.time()
+    maxscore = 0
+    counter = 0
+    while True:
+    	
+    	counter += 1
+        now = time.time()
+        if now - start > 60 * 60 * 3:
+            break
+        #showWelcomeScreen()
         score = maingame()
-        showGameover(score)
+        maxscore = max(maxscore, score)
 
-
+        print "episode ", counter, " : ", "maxscore = ", maxscore, " score = ", score
+#showGameover(score)
