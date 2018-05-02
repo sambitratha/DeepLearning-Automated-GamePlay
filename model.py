@@ -1,202 +1,360 @@
 import sys
-import numpy
-import csv
-import math
 import os
+import pygame
 import random
-import torch
-import torch.nn as nn
-import numpy as np
-import torch.nn.functional as F
-from torch.autograd import Variable
-import pickle
+from pygame.locals import *
+from  math import  cos, sin, pi
+import pygame.locals as locals
+import model
+import time
 
 
 
-class QLearning:
-    def __init__(self,dimension, episilion = 0.99, learning_rate = 0.2, discount = 0.9, decay = 0.995):
-        self.dimension = dimension
-        self.episilion = episilion
-        self.learning_rate = learning_rate
-        self.discount = discount
-        self.decay = decay
-        self.QTable = {}
-        self.readQTable()
-        pass
+##########################################################################################
 
-    def readQTable(self):
-        if not os.path.exists("model.csv"):
-            for i in range(self.dimension[0]):
-                for j in range(self.dimension[1]):
-                    for k in range(self.dimension[2]):
-                        self.QTable[(i - 10, j , k - 30, 0)] = 0
-                        self.QTable[(i - 10, j , k - 30, 1)] = 0
-            return
+black = (0, 0, 0)
+white = (255, 255, 255)
+red = (255, 0, 0)
+green = (0, 255, 0)
+blue = (0, 0, 255)
+grey = (127, 127, 127)
 
-        with open("model.csv", 'rb') as modelfile:
-            csvreader = csv.reader(modelfile, delimiter = ' ')
-            for row in csvreader:
-                tupl = (int(row[0]), int(row[1]), int(row[2]), int(row[3]))
-                self.QTable[tupl] = float(row[4])
+colors = {}
+colorlist = ['black', 'white', 'red' , 'green' , 'blue' , 'grey' ]
+colors['black']     = black
+colors['white']     = white
+colors['red']       = red
+colors['green']     = green
+colors['blue']      = blue
+colors['grey']      = grey
+##########################################################################################
 
-    def getAction(self, state):
-        (a, b, c) = state
-        random_val = float(random.randint(1, 100))/100
-        if random_val > self.episilion:
-            if self.QTable[(a, b, c, 1)] > self.QTable[(a, b, c, 0)]:
-                return 1
-            else:
-                return 0
+windowheight = 500
+windowlength = 800
+
+upmargin = windowheight / 20
+
+font = None
+
+memory = None
+
+welcomebg = pygame.image.load('assets/welcome2.jpg')
+print(welcomebg)
+
+# Qmodel = model.QLearning([30, 40, 60], episilion=0.999)
+Qmodel = model.DQN()
+
+#########################################################################################
+def showWelcomeScreen():
+    #show this screen when the user first starts the program
+    display = pygame.display.set_mode((windowlength, windowheight))
+    pygame.display.set_caption("Car Racing")
+    print(welcomebg.get_rect())
+    while True:
+        #display.fill(colors['white'])
+        cropRect = (0, 0, windowlength, windowheight)
+        display.blit(welcomebg, dest = (0, 0), area= cropRect)
+        #display.blit(welcomebg, welcomebg.get_rect())
+
+        tObject, tRect = getStringObject("Press 'P' to Play", windowlength/2 , 430)
+        display.blit(tObject, tRect)
+        display.set_alpha(255)
+
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+                pygame.quit()
+                sys.exit()
+
+            if (event.type == KEYDOWN or event.type == KEYUP) and event.key == K_p:
+                return
+
+#########################################################################################
+
+def maingame():
+    #execute this when user starts playing
+
+    global memory
+
+    memory = []
+
+    playerscore = 0
+    pipeimage = pygame.image.load("assets/brick4.png")
+    ballx = windowlength/4
+    bally = (windowheight - upmargin) / 2
+    radius = 15
+    width = 80
+    gap = 100
+    screenheight = windowheight - upmargin
+    distance = windowlength/2
+    pipes = []
+    #add two pipes in the start of the game
+    height1 = random.randint(200, 300)
+    height2 = random.randint(200, 300)
+    pipes.append([windowlength/2, height1])
+    pipes.append([windowlength, height2])
+
+
+    crossedPole = False
+
+    playerUpAccl = -10
+    playerMaxVel = 10
+    playerAccl = 1
+    vely = 10
+    velx = -10
+    clock = pygame.time.Clock()
+    display = pygame.display.set_mode((windowlength, windowheight))
+    pygame.display.set_caption("Car Racing")
+    up = False
+    flag = False
+
+    lastaction = None
+    prevstate = None
+    curstate = None
+    reward = None
+
+    gameover = False
+
+    pixel_batch = 20
+
+    while True:
+        display.fill(colors['blue'])
+
+        curvel = vely
+        horizontal_distance = 0
+        vertical_distance = 0
+        if ballx > pipes[0][0] + width/2:
+            horizontal_distance = (pipes[1][0] - ballx)
+            vertical_distance = pipes[1][1] - bally
         else:
-            return random.randint(1, 5) % 2
+            horizontal_distance = pipes[0][0] + width/2 - ballx
+            vertical_distance = pipes[0][1] - bally
+
+        horizontal_distance /= pixel_batch
+        vertical_distance  /= pixel_batch
+
+        horizontal_distance = max(horizontal_distance, 0)
 
 
-    def writeQTable(self):
-
-        with open("model.csv", 'wb') as modelfile:
-            csvwriter = csv.writer(modelfile, delimiter = ' ')
-            for i in range(self.dimension[0]):
-                for j in range(self.dimension[1]):
-                    for k in range(self.dimension[2]):
-                        csvwriter.writerow([str(i - 10) , str(j), str(k - 30), 0, str(self.QTable[(i - 10, j, k - 30, 0)])])
-                        csvwriter.writerow([str(i - 10) , str(j), str(k - 30), 1, str(self.QTable[(i - 10, j, k - 30, 1)])])
+        curstate = (curvel, horizontal_distance, vertical_distance)
 
 
-
-    def updateQValue(self, current_state, next_state, reward):
-
-        (a, b, c) = next_state
-        state1 = (a, b, c, 0)
-        state2 = (a, b, c, 1)
-        maxim = max(self.QTable[state1], self.QTable[state2])
-        self.QTable[current_state] += self.learning_rate * (reward + self.discount * maxim - self.QTable[current_state])
-
-    def update_epsilion(self):
-        self.episilion = self.episilion * (self.decay)
+        if lastaction != None:
+            # Qmodel.updateQValue(prevstate, curstate, reward)
+            # Qmodel.update_epsilion()
+            memory.append([prevstate, curstate, reward])
 
 
 
+        if gameover:
+            # Qmodel.writeQTable()
+            return playerscore
+
+        lastaction = Qmodel.getAction(curstate)
+
+        if lastaction == 1:
+            up = True
+            vely = playerUpAccl
 
 
-class DQN(nn.Module):
-    def __init__(self, dimension = 4):
-        super(DQN, self).__init__()
-        self.dimension = dimension
-        self.dim1 = 20
-        self.dim2 = 30
-        self.fc1 = nn.Linear(4, self.dim1)
-        self.fc1.weight = nn.Parameter(nn.init.xavier_normal(torch.Tensor(self.dim1, 4)))
-        self.fc2 = nn.Linear(self.dim1 , self.dim2)
-        self.fc2.weight = nn.Parameter(nn.init.xavier_normal(torch.Tensor(self.dim2, self.dim1)))
-        self.fc3 = nn.Linear(self.dim2, 1)
-
-    def forward(self, x):
-        print self.fc1.weight
-        # print x
-        layer1 = self.fc1(x)
-        # print "finished"
-        layer2 = self.fc2(layer1)
-        layer2 = F.dropout(layer2)
-        output = self.fc3(layer2)
-        return output
 
 
-class DQNmodel:
-    def __init__(self, episilion = 0.99, decay = 0.995, discount = 0.9, learning_rate = 0.01):
-        self.episilion = episilion
-        self.decay = decay
-        self.discount = discount
-        self.learning_rate = learning_rate
-        self.model = DQN()
-        self.optimizer = torch.optim.SGD(self.model.parameters(),lr = self.learning_rate)
-
-    def getAction(self, state):
-
-        random_val = float(random.randint(1, 100))/100
-        if random_val < self.episilion:
-            return random.randint(1, 5) % 2
-
-        (vel, h_dist, v_dist) = state
-        state1 = [vel, h_dist, v_dist, 0]
-        state2 = [vel, h_dist, v_dist, 1]
-
-        state1 = Variable(torch.from_numpy(np.array(state1))).float()
-        state2 = Variable(torch.from_numpy(np.array(state2))).float()
-
-        out1 = self.model(state1)
-        out2 = self.model(state2)
-
-        print "out1 = " , out1
-        print "out2 = " , out2 
-        # if np.array(out1)[0] > np.array(out2)[0]:
-        #     return 0
-        # else:
-        #     return 1
-
-        return 1
-
-    def updateQValue(self, current_state, next_state, reward):
-        cur_state = [current_state[i] for i in range(len(current_state))]
-        inp = Variable(torch.from_numpy(np.array(cur_state))).float()
-        output = self.model(inp)
-
-        state1 = [next_state[i] for i in range(len(next_state))] + [0]
-        state2 = state1[:-1] + [1]
-
-        state1 = Variable(torch.from_numpy(np.array(state1))).float()
-        state2 = Variable(torch.from_numpy(np.array(state2))).float()
-
-        out1 = self.model(state1)
-        out2 = self.model(state2)
-
-        # print "out1 = " , out1
-        # print "out2 = " , out2         
-
-        maxim = int(out1[0])
-        # print "maxim = " , maxim
-
-        if int(out1[0]) < int(out2[0]):
-            maxim = int(out2[0])
-
-        test_label = Variable(torch.from_numpy(np.array([maxim * self.discount + reward]))).float()
-
-        loss = F.smooth_l1_loss(output.view(-1), test_label)
-
-        self.optimizer.zero_grad()
-        loss.backward()
-
-        self.optimizer.step()
+        pygame.draw.circle(display, colors['red'], (ballx, bally), radius)
 
 
-    def update_epsilion(self):
-        self.episilion = self.episilion * (self.decay)
 
-    def writeQTable(self):
-        modelobject = open("modeldump", 'wb')
-        pickle.dump(self.model, modelobject)
+        for pipe in pipes:
+            #pygame.draw.rect(display, colors['black'], (pipe[0], upmargin, width, pipe[1]))
+            cropRect = (0, 100, width, pipe[1])
+            display.blit(pipeimage, dest = (pipe[0], upmargin), area= cropRect)
+            lpipex = pipe[0]
+            lpipey = upmargin + pipe[1] + gap
+            lpipewidth = width
+            lpipeheight = screenheight - pipe[1] - gap
+            cropRect = (0, 100, lpipewidth, lpipeheight)
+            #pygame.draw.rect(display, colors['black'], (lpipex, lpipey, lpipewidth, lpipeheight))
+            display.blit(pipeimage, dest = (lpipex, lpipey), area = cropRect)
 
-    def readQTable(self):
-        modelobject = open("modeldump", 'r')
-        self.model = pickle.load(modelobject)
+        #move pipes to left
+        for pipe in pipes:
+            pipe[0] += velx
+
+        #add new pipe to list
+        if pipes[-1][0] + distance < windowlength:
+            #pipes.append([pipes[-1][0] + distance, random.randint(50, screenheight - 200)])
+            newheight = random.randint(150, 350)
+            #print "newheight : ", newheight
+            pipes.append([pipes[-1][0] + distance, newheight])
+            #print pipes
 
 
-    def experience_replay(self, memory):
-        for curr_mem in memory:
-            [curr_state, next_state, reward] = curr_mem
-            self.updateQValue(curr_state, next_state, reward)
-        
+
+
+        clock.tick(150)
+
+
+        #event call back method
+        for event in pygame.event.get():
+            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+                pygame.quit()
+                return playerscore
+
+            #if player moved up then set the boolean field to true
+            # if event.type == KEYDOWN and event.key == K_UP:
+            #     up = True
+            #     vely = playerUpAccl
+
+
+        if vely < playerMaxVel and not up:
+            vely += playerAccl
+        #if player pressed up then accelerate the ball upward
+        if up:
+            up = False
+
+        #update the position of ball
+        # if bally + radius < windowheight :
+        #     bally += vely
+
+        if radius + upmargin < bally < windowheight - radius:
+        	bally += vely
+
+        # elif radius + upmargin > bally:
+        # 	if vely > 0:
+        # 		bally += vely
+
+        # elif bally > windowheight - radius:
+        # 	if vely < 0:
+        # 		bally += vely
+
+        else:
+            gameover = True
+
+
+        if bally + radius >= windowheight:
+            vely = int(float(-0.8 * vely))
+
+
+        curpipe = pipes[0]
+        if not crossedPole:
+            if ballx > curpipe[0] + width/2 :
+                reward = 2
+                playerscore += 1
+                crossedPole = True
+
+        #pop first pipe if needed
+        if pipes[0][0] + pipes[0][1] < 0:
+            if  crossedPole:
+                crossedPole = False
+            pipes.pop(0)
+
+
+        ball = {'center' : (ballx, bally) , 'radius' : radius}
+        for pipe in pipes:
+            upipe = {}
+            upipe['start'] = [pipe[0], upmargin]
+            upipe['width'] = width
+            upipe['height'] = pipe[1]
+            lpipe = {}
+            lpipe['start'] = [pipe[0], upmargin + pipe[1] + gap]
+            lpipe['width'] = width
+            lpipe['height'] = screenheight - pipe[1] - gap
+
+            if checkForCollision(ball, upipe) or checkForCollision(ball, lpipe):
+               gameover = True
+
+
+        if gameover:
+            reward = -100000000
+        else:
+            if not crossedPole:
+                reward = 1
+
+
+
+
+        pygame.draw.rect(display, (50, 50, 70, 100), (0, 0, windowlength, upmargin))
+
+        tObject, tRect = getStringObject(str(playerscore), windowlength/2, 10)
+        display.blit(tObject, tRect)
+
+
+        (a, b, c) = curstate
+        prevstate = (a, b, c, lastaction)
+
+
+
+        if not flag:
+            pygame.display.update()
+
+    pass
+
+def showGameover(score):
+    #show this screen when the user is done playing the game
+
+    display = pygame.display.set_mode((windowlength, windowheight))
+    pygame.display.set_caption("Game Over")
+    gameoverBG = pygame.image.load('assets/gameover.jpg')
+    print(welcomebg.get_rect())
+    while True:
+        #display.fill(colors['white'])
+        cropRect = (0, 0, windowlength, windowheight)
+        display.blit(gameoverBG, dest = (0, 0), area= cropRect)
+
+        tObject, tRect = getStringObject("Your Score: " + str(score), windowlength/2, 50 , colors['black'])
+        display.blit(tObject, tRect)
+        #display.blit(welcomebg, welcomebg.get_rect())
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+                pygame.quit()
+                sys.exit()
+
+            if (event.type == KEYDOWN or event.type == KEYUP) and event.key == K_p:
+                return
+    pass
+
+
+
+def checkForCollision(circle, rect):
+    (cx, cy) = circle['center']
+    r = circle['radius']
+    for degree in range(0, 360, 5):
+        theta = float(degree * pi) / 180
+        point = [r * cos(theta) + cx, r * sin(theta) + cy]
+        if rect['start'][0] < point[0] < rect['start'][0] + rect['width'] and rect['start'][1] < point[1] < rect['start'][1] + rect['height']:
+            return True
+
+    return False
+
+
+def getStringObject(s,centerx,centery, color = colors['white']):
+
+    textObj = font.render(s,True, color )
+    #textObj.set_alpha(50)
+    textRect = textObj.get_rect()
+    textRect.center = (centerx, centery)
+    return textObj , textRect
+
+
 
 if __name__ == '__main__':
-    model = DQNmodel()
+    pygame.init()
+    font = pygame.font.Font("assets/EraserRegular.ttf",30)
+    start = time.time()
+    maxscore = 0
+    counter = 0
+    while True:
+    	
+    	counter += 1
+        now = time.time()
+        if now - start > 60 * 60 * 3:
+            break
+        #showWelcomeScreen()
+        score = maingame()
+        maxscore = max(maxscore, score)
 
-    model.updateQValue((-10, 2, 3, 4), (1, 2, 3), 100)
-
-
-
-
-
-
-
-
-
-
+        Qmodel.experience_replay(memory)
+        print "episode ", counter, " : ", "maxscore = ", maxscore, " score = ", score
+#showGameover(score)
